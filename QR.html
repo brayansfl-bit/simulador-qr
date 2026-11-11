@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Peaje QR (Educativo)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- QRCode.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .qr-container img { margin: 0 auto; border-radius: 0.5rem; }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* Custom scrollbar for logs */
+        .log-container::-webkit-scrollbar { width: 6px; }
+        .log-container::-webkit-scrollbar-track { background: transparent; }
+        .log-container::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800 p-4 md:p-8 flex flex-col items-center">
+
+    <div class="max-w-5xl w-full">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-slate-900 mb-2">Simulador de Sistema de Peaje QR</h1>
+            <p class="text-slate-500 max-w-2xl mx-auto">Demostración educativa de cómo los sistemas de transporte validan tokens dinámicos para evitar fraudes y códigos "infinitos".</p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            
+            <!-- SECCIÓN: APP DEL USUARIO -->
+            <div class="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-blue-500 relative overflow-hidden">
+                <div class="absolute top-0 right-0 bg-blue-500 text-white text-xs font-bold px-3 py-1 rounded-bl-lg">
+                    App Pasajero
+                </div>
+                <h2 class="text-xl font-semibold mb-4 text-slate-700">Mi Billetera</h2>
+                
+                <div class="bg-slate-50 rounded-xl p-4 mb-6 flex justify-between items-center border border-slate-100">
+                    <div>
+                        <p class="text-sm text-slate-500 font-medium">Saldo Disponible</p>
+                        <p class="text-3xl font-bold text-slate-800">$<span id="userBalance">50.00</span></p>
+                    </div>
+                    <button onclick="addFunds()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-lg font-medium transition-colors text-sm">
+                        + Recargar $50
+                    </button>
+                </div>
+
+                <div class="text-center border-2 border-dashed border-slate-200 rounded-xl p-6 bg-slate-50">
+                    <p class="text-sm text-slate-500 mb-3 font-medium">Pasaje: $15.00 MXN</p>
+                    <div id="qrcode" class="qr-container mb-4 min-h-[200px] flex items-center justify-center">
+                        <p class="text-slate-400 text-sm">Presiona "Generar Boleto" para comenzar</p>
+                    </div>
+                    
+                    <div id="timerContainer" class="hidden mb-4">
+                        <div class="w-full bg-slate-200 rounded-full h-2.5 mb-1">
+                            <div id="timerBar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-1000" style="width: 100%"></div>
+                        </div>
+                        <p class="text-xs text-slate-500">El código se actualiza en <span id="timeRemaining" class="font-bold">15</span>s por seguridad.</p>
+                        <p id="tokenDisplay" class="text-[10px] text-slate-400 mt-1 font-mono break-all"></p>
+                    </div>
+
+                    <button id="btnGenerate" onclick="startQRGeneration()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition-colors shadow-md shadow-blue-200">
+                        Generar Boleto QR
+                    </button>
+                    <button id="btnStop" onclick="stopQRGeneration()" class="w-full bg-red-100 hover:bg-red-200 text-red-600 font-semibold py-3 px-4 rounded-xl transition-colors mt-2 hidden">
+                        Detener / Ocultar QR
+                    </button>
+                </div>
+            </div>
+
+            <!-- SECCIÓN: VALIDADOR DEL AUTOBÚS -->
+            <div class="bg-slate-900 rounded-2xl shadow-lg p-6 border-t-4 border-emerald-500 relative flex flex-col">
+                <div class="absolute top-0 right-0 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-bl-lg">
+                    Validador (Camión/Metro)
+                </div>
+                <h2 class="text-xl font-semibold mb-4 text-white">Lector Óptico</h2>
+
+                <div class="flex-grow flex flex-col justify-center items-center p-6 border-2 border-slate-700 rounded-xl mb-4 bg-slate-800">
+                    
+                    <!-- Pantalla del Validador -->
+                    <div id="validatorScreen" class="w-full h-32 bg-black rounded-lg border-4 border-slate-600 flex flex-col items-center justify-center mb-6 shadow-inner transition-colors duration-300">
+                        <svg id="iconWait" class="w-10 h-10 text-slate-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+                        <p id="validatorMessage" class="text-slate-400 font-mono text-center text-sm font-bold uppercase tracking-wider">Esperando QR...</p>
+                    </div>
+
+                    <button onclick="simulateScan()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 px-6 rounded-xl transition-colors shadow-lg shadow-emerald-900/50 flex items-center justify-center gap-2">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+                        Simular Escaneo de QR
+                    </button>
+                    <p class="text-xs text-slate-400 mt-3 text-center">Este botón simula la acción de acercar la pantalla del celular al lector del autobús.</p>
+                </div>
+
+                <!-- Consola del Servidor (Logs) -->
+                <div class="mt-auto">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Logs del Servidor de Transporte</h3>
+                    <div id="serverLogs" class="bg-black text-green-400 font-mono text-[10px] p-3 rounded-lg h-32 overflow-y-auto log-container flex flex-col gap-1">
+                        <div>[SISTEMA] Validador inicializado...</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Configuración del Sistema
+        const FARE_PRICE = 15.00;
+        const TOKEN_LIFESPAN_SEC = 15;
+        let userBalance = 50.00;
+        
+        // Estado del Token y QR
+        let currentToken = null;
+        let qrObject = null;
+        let tokenInterval = null;
+        let countdownInterval = null;
+        
+        // Base de datos de tokens usados (para evitar escanear el mismo QR dos veces)
+        const usedTokens = new Set();
+
+        // Elementos del DOM
+        const elBalance = document.getElementById('userBalance');
+        const elQrcode = document.getElementById('qrcode');
+        const elTimerContainer = document.getElementById('timerContainer');
+        const elTimerBar = document.getElementById('timerBar');
+        const elTimeRemaining = document.getElementById('timeRemaining');
+        const elTokenDisplay = document.getElementById('tokenDisplay');
+        const elBtnGenerate = document.getElementById('btnGenerate');
+        const elBtnStop = document.getElementById('btnStop');
+        const elValidatorScreen = document.getElementById('validatorScreen');
+        const elValidatorMessage = document.getElementById('validatorMessage');
+        const elIconWait = document.getElementById('iconWait');
+        const elServerLogs = document.getElementById('serverLogs');
+
+        // Función para actualizar balance visual
+        function updateBalanceDisplay() {
+            elBalance.textContent = userBalance.toFixed(2);
+        }
+
+        // Función para agregar saldo
+        function addFunds() {
+            userBalance += 50.00;
+            updateBalanceDisplay();
+            logServer(`[RECARGA] Usuario recargó $50.00. Nuevo saldo: $${userBalance.toFixed(2)}`, 'text-blue-400');
+        }
+
+        // Función para generar un Token Criptográfico (Simulado)
+        function generateToken() {
+            const timestamp = Date.now();
+            const randomHex = Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+            const expiresAt = timestamp + (TOKEN_LIFESPAN_SEC * 1000);
+            
+            // Estructura simulada del token
+            return {
+                id: `TKN-${timestamp}-${randomHex}`,
+                createdAt: timestamp,
+                expiresAt: expiresAt,
+                payload: "TARIFA_GENERAL"
+            };
+        }
+
+        // Iniciar el ciclo de vida del QR dinámico
+        function startQRGeneration() {
+            elBtnGenerate.classList.add('hidden');
+            elBtnStop.classList.remove('hidden');
+            elTimerContainer.classList.remove('hidden');
+            
+            createAndDisplayQR();
+
+            // Intervalo para regenerar token entero cuando caduca
+            tokenInterval = setInterval(() => {
+                createAndDisplayQR();
+            }, TOKEN_LIFESPAN_SEC * 1000);
+        }
+
+        function createAndDisplayQR() {
+            currentToken = generateToken();
+            
+            // Limpiar QR anterior
+            elQrcode.innerHTML = '';
+            
+            // En un sistema real, se empaqueta la info y se encripta. Aquí lo convertimos a JSON string.
+            const qrDataString = JSON.stringify(currentToken);
+            
+            // Generar imagen QR
+            qrObject = new QRCode(elQrcode, {
+                text: qrDataString,
+                width: 180,
+                height: 180,
+                colorDark : "#0f172a", // slate-900
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.M
+            });
+
+            elTokenDisplay.textContent = `ID: ${currentToken.id}`;
+            
+            // Reiniciar animación del temporizador
+            resetTimer();
+        }
+
+        function resetTimer() {
+            clearInterval(countdownInterval);
+            let timeLeft = TOKEN_LIFESPAN_SEC;
+            elTimeRemaining.textContent = timeLeft;
+            elTimerBar.style.width = '100%';
+            
+            countdownInterval = setInterval(() => {
+                timeLeft--;
+                elTimeRemaining.textContent = timeLeft;
+                const percentage = (timeLeft / TOKEN_LIFESPAN_SEC) * 100;
+                elTimerBar.style.width = `${percentage}%`;
+                
+                if(timeLeft <= 3) {
+                    elTimerBar.classList.replace('bg-blue-600', 'bg-red-500');
+                } else {
+                    elTimerBar.classList.replace('bg-red-500', 'bg-blue-600');
+                }
+
+                if (timeLeft <= 0) {
+                    clearInterval(countdownInterval);
+                }
+            }, 1000);
+        }
+
+        function stopQRGeneration() {
+            clearInterval(tokenInterval);
+            clearInterval(countdownInterval);
+            currentToken = null;
+            elQrcode.innerHTML = '<p class="text-slate-400 text-sm">Generación detenida.</p>';
+            elTimerContainer.classList.add('hidden');
+            elBtnGenerate.classList.remove('hidden');
+            elBtnStop.classList.add('hidden');
+        }
+
+        // ==========================================
+        // LÓGICA DEL VALIDADOR (Simulador de Lector)
+        // ==========================================
+
+        function simulateScan() {
+            // Reset de pantalla de validador
+            setValidatorState('default', 'Procesando...', true);
+
+            setTimeout(() => {
+                // 1. Verificar si hay un QR en pantalla
+                if (!currentToken) {
+                    setValidatorState('error', 'CÓDIGO NO DETECTADO');
+                    logServer('[ERROR] Intento de escaneo vacío. No hay QR visible.', 'text-red-400');
+                    return;
+                }
+
+                const now = Date.now();
+
+                // 2. Verificar si el token ya caducó
+                if (now > currentToken.expiresAt) {
+                    setValidatorState('error', 'CÓDIGO CADUCADO');
+                    logServer(`[RECHAZADO] Token ${currentToken.id.substring(0,12)}... ha expirado.`, 'text-red-400');
+                    return;
+                }
+
+                // 3. Verificar ataque de repetición (Token ya usado)
+                if (usedTokens.has(currentToken.id)) {
+                    setValidatorState('error', 'CÓDIGO YA USADO');
+                    logServer(`[SEGURIDAD] Intento de re-uso detectado en token ${currentToken.id.substring(0,12)}...`, 'text-yellow-400');
+                    return;
+                }
+
+                // 4. Verificar saldo suficiente
+                if (userBalance < FARE_PRICE) {
+                    setValidatorState('error', 'SALDO INSUFICIENTE');
+                    logServer(`[RECHAZADO] Saldo insuficiente. Requerido: $${FARE_PRICE}, Actual: $${userBalance.toFixed(2)}`, 'text-orange-400');
+                    return;
+                }
+
+                // --- TRANSACCIÓN EXITOSA ---
+                // Descontar saldo
+                userBalance -= FARE_PRICE;
+                updateBalanceDisplay();
+                
+                // Marcar token como usado
+                usedTokens.add(currentToken.id);
+
+                // Mostrar éxito
+                setValidatorState('success', 'ACCESO CONCEDIDO');
+                logServer(`[EXITO] Cobro de $${FARE_PRICE} aplicado. Token ${currentToken.id.substring(0,12)}... invalidado para futuros usos. Nuevo saldo: $${userBalance.toFixed(2)}`, 'text-emerald-400');
+
+            }, 600); // Simulamos retardo de procesamiento de red
+        }
+
+        function setValidatorState(state, message, hideIcon = false) {
+            elValidatorScreen.className = 'w-full h-32 rounded-lg border-4 flex flex-col items-center justify-center mb-6 shadow-inner transition-colors duration-300';
+            elIconWait.style.display = hideIcon ? 'none' : 'block';
+            elValidatorMessage.textContent = message;
+
+            if (state === 'default') {
+                elValidatorScreen.classList.add('bg-black', 'border-slate-600');
+                elValidatorMessage.className = 'text-slate-400 font-mono text-center text-sm font-bold uppercase tracking-wider fade-in';
+            } else if (state === 'success') {
+                elValidatorScreen.classList.add('bg-emerald-900', 'border-emerald-500');
+                elValidatorMessage.className = 'text-emerald-400 font-mono text-center text-lg font-bold uppercase tracking-wider fade-in';
+                
+                // Regresar a default después de 2.5s
+                setTimeout(() => setValidatorState('default', 'Esperando QR...'), 2500);
+            } else if (state === 'error') {
+                elValidatorScreen.classList.add('bg-red-900', 'border-red-500');
+                elValidatorMessage.className = 'text-red-400 font-mono text-center text-lg font-bold uppercase tracking-wider fade-in';
+                
+                // Regresar a default después de 2.5s
+                setTimeout(() => setValidatorState('default', 'Esperando QR...'), 2500);
+            }
+        }
+
+        function logServer(msg, colorClass) {
+            const time = new Date().toLocaleTimeString('es-MX', { hour12: false });
+            const logEntry = document.createElement('div');
+            logEntry.className = `${colorClass} fade-in`;
+            logEntry.textContent = `[${time}] ${msg}`;
+            
+            elServerLogs.appendChild(logEntry);
+            
+            // Auto scroll to bottom
+            elServerLogs.scrollTop = elServerLogs.scrollHeight;
+        }
+
+        // Init
+        updateBalanceDisplay();
+    </script>
+</body>
+</html>
